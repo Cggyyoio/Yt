@@ -1,6 +1,0 @@
-pyrogram
-yt-dlp
-requests
-youtube-search-python
-speedtest
-youtube_search
