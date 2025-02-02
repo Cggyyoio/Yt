@@ -2,3 +2,5 @@ pyrogram
 yt-dlp
 requests
 youtube-search-python
+speedtest
+json
