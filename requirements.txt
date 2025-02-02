@@ -1,7 +1,8 @@
-pyrogram
-yt-dlp
-requests
-youtube-search-python
-speedtest
-python-telegram-bot
-pytube
+python-telegram-bot==13.15
+pytube==12.1.0
+scrapetube==0.4.0
+requests==2.26.0
+beautifulsoup4==4.10.0
+gunicorn==20.1.0
+Flask==2.0.2
+python-dotenv==0.19.2
