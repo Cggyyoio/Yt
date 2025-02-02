@@ -1,0 +1,7 @@
+pyrogram
+yt-dlp
+requests
+youtube-search-python
+speedtest
+python-telegram-bot
+pytube
