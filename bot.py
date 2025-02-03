@@ -1,292 +1,110 @@
-import telegram
-from telegram.ext import Updater,CommandHandler,MessageHandler,Filters,ConversationHandler
-import os, shutil
-from telegram import ReplyKeyboardRemove, ReplyKeyboardMarkup
-from youtube import *
-import threading
+import telebot
+from yt_dlp import YoutubeDL
+import os
+import time
+import requests
 
-# find port of server 
-PORT = int(os.environ.get('PORT',5000))
-token ='7165480067:AAGqlNq4-zHKOt4IAr1XaBt7Q4wBzgIQZHY'
+# توكن البوت
+bot = telebot.TeleBot("7165480067:AAGqlNq4-zHKOt4IAr1XaBt7Q4wBzgIQZHY")
 
-START_CO, GET_WORD, GET_NUMBER,GET_CHANNEL_URL, GET_URL, CONFIRMATION = range(1, 7)
-
-reply_keyboeard_start = [['Download entire channel'],['Download with searching word'], ['Download one video'], ['See processes'], ['exit']]
-markup_start = ReplyKeyboardMarkup(reply_keyboeard_start,resize_keyboard=True, one_time_keyboard=True)
-
-reply_keyboeard_back = [['back', '🏠 home', 'exit']]
-markup_back = ReplyKeyboardMarkup(reply_keyboeard_back,resize_keyboard=True, one_time_keyboard=True)
-
-reply_keyboeard_confirmation = [['I confirm'], ['🏠 home', 'exit']]
-markup_confirmation = ReplyKeyboardMarkup(reply_keyboeard_confirmation,resize_keyboard=True, one_time_keyboard=True)
-
-
-
-def start(update,context):
-    update.message.reply_text('Choose between options : ', reply_markup = markup_start)
-    return(START_CO)
-
-def start_co(update, context):
-    user = update.message.from_user
-    text = update.message.text
-
-    remake_folder(str(user.id))
-
-    if text == 'Download entire channel':
-        update.message.reply_text('Enter URL of one video on channel you want to download all of that videos.', reply_markup = markup_back)
-        return(GET_CHANNEL_URL)
-
-    elif text == 'Download with searching word':
-        update.message.reply_text('Enter word you want to search.', reply_markup = markup_back)
-        return(GET_WORD)
-
-    elif text == 'Download one video':
-        update.message.reply_text('Enter link of that video.', reply_markup = markup_back)
-        return(GET_URL)
-
-def get_channel_url(update,context):
-    user_data = context.user_data
-    text = update.message.text
-
-    if text == 'back':
-        update.message.reply_text('Choose ...', reply_markup = markup_start)
-        return(START_CO)
-    id = find_channel_id(text)
-    if id :
-        list_of_urls = get_videos_from_channel(id)
-        if list_of_urls:
-            user_data['list_of_urls'] = list_of_urls
-            update.message.reply_text(f'There is {len(list_of_urls)} videos on this channel', reply_markup = markup_confirmation)
-            return(CONFIRMATION)
-    else:
-        update.message.reply_text('Can not find id of channel', reply_markup = markup_start)
-        return(START_CO)
-
-def get_word_for_search(update, context):
-    user_data = context.user_data
-    text = update.message.text
-
-    if text == 'back':
-        update.message.reply_text('Choose ...', reply_markup = markup_start)
-        return(START_CO)
-    
-    user_data['search_word'] = text
-    update.message.reply_text('How many videos you wanna download ?', reply_markup = markup_back)
-    return(GET_NUMBER)
-
-def get_number_of_videos(update, context):
-    user_data = context.user_data
-    number = update.message.text
-
-    if number == 'back':
-        update.message.reply_text('Enter word you want to search.', reply_markup = markup_back)
-        return(GET_WORD)
-    
+# دالة لتحميل الفيديو
+def download_video(url, message):
     try:
-        number = int(number)
-    except:
-        update.message.reply_text('Wrong input', reply_markup = markup_back)
-        return(GET_NUMBER) 
+        bot.send_message(message.chat.id, "╮ ❐ يتـم جلـب البيانـات انتظـر قليلاً ...𓅫╰▬▭")
 
-    list_of_urls = find_videos_with_search(user_data['search_word'], number)
-    if list_of_urls:
-        user_data['list_of_urls'] = list_of_urls
-    
-    text = f'''
-    Search word : {user_data['search_word']}
-    Number of videos : {number}
-    If it is ok pleas confirm.'''
-    update.message.reply_text(text, reply_markup = markup_confirmation)
-    return(CONFIRMATION)
+        # إعدادات yt-dlp
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': '%(title)s.%(ext)s',
+            'progress_hooks': [lambda d: progress_hook(d, message)],  # مؤشر التقدم
+            'nocheckcertificate': True,
+            'nocolor': True,
+            'quiet': True,
+            'http_headers': {'User-Agent': 'Mozilla/5.0'},
+            'socket_timeout': 60,  # مهلة أطول للشبكة
+        }
 
-def one_video_download(update, context):
-    user = update.message.from_user
-    text = update.message.text
-    url = text.strip()
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            file_name = ydl.prepare_filename(info)
 
-    if text == 'back':
-        update.message.reply_text('Choose ...', reply_markup = markup_start)
-        return(START_CO)
+        bot.send_message(message.chat.id, f"╮ ❐ جـارِ التحضيـر للـرفع انتظـر ...𓅫╰:\nاسم الفيديو: {info['title']}")
 
-    try:
-        status = Download(url, user.id)
-        if status:
-            update.message.reply_video(video = open(status, 'rb'), reply_markup = markup_start)
-            # os.remove(status)
-            return(START_CO)
-        else:
-            update.message.reply_text(f"could not download the video {url}", reply_markup = markup_start)
-            return(START_CO)
-    except:
-        update.message.reply_text(f"could not download {url}", reply_markup = markup_start)
-        return(START_CO)
-        
+        # رفع الفيديو
+        upload_progress(file_name, message)
 
-# test
-def do_downloading(user_data, user, update):
+        # حذف الفيديو بعد الرفع
+        os.remove(file_name)
 
-    for url in user_data['list_of_urls']:
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء التحميل:\n{e}")
+
+# دالة مؤشر التقدم للتحميل
+def progress_hook(d, message):
+    if d['status'] == 'downloading':
         try:
-            status = Download(url['url'], user.id)
-            if status:
-                update.message.reply_video(video = open(status, 'rb'), caption = url['title'])
-                # os.remove(status)
-            else:
-                update.message.reply_text(f"could not download the video {url['url']}")
-                continue
-        except:
-            update.message.reply_text(f"could not download {url['url']}", reply_markup = ReplyKeyboardRemove())
-            continue
+            percent = float(d['_percent_str'].replace('%', '').strip())
+            speed = d.get('_speed_str', 'N/A')
+            eta = d.get('_eta_str', 'N/A')
+            progress_bar = create_progress_bar(percent)
+            status_message = f"📥 تحميل الفيديو:\n{progress_bar} {percent:.2f}%\n🚀 السرعة: {speed}\n⏳ الوقت المتبقي: {eta}"
 
-def how_many_thread_is_alive(update, context):
-    user_data = context.user_data
+            bot.send_message(message.chat.id, status_message)
+        except Exception:
+            pass
 
-    counter = 0
-    if user_data.get('thread'):
-        for i in user_data['thread']:
-            if i.is_alive():
-                counter += 1
+# دالة مؤشر التقدم للرفع
+def upload_progress(file_name, message):
+    file_size = os.path.getsize(file_name)
+    uploaded_size = 0
+    chunk_size = 1024 * 1024  # 1 MiB
 
-    update.message.reply_text(f'there is {counter} process is going.', reply_markup = markup_start)
-    return(START_CO)
-
-def confirmation(update, context):
-    user_data = context.user_data
-    user = update.message.from_user
-    text = update.message.text
-
-    if text != 'I confirm':
-        update.message.reply_text('Choose ...', reply_markup = markup_start)
-        return(START_CO)
-
-    t = threading.Thread(target=do_downloading, args=(user_data, user, update))
-    t.start()
-    user_data['thread'].append(t)
-
-
-    update.message.reply_text('finish proces', reply_markup = markup_start)
-    return(START_CO)
-
-
-def stop_conversation(update,context):
-    update.message.reply_text('goodbye' , reply_markup = ReplyKeyboardRemove())
-    return(ConversationHandler.END)
-
-def cancle(update,context):
-    update.message.reply_text('bye' , reply_markup = ReplyKeyboardRemove())
-    return(ConversationHandler.END)
-
-def timeout(update, context):
-    user = update.message.from_user
-    try:
-        remake_folder(str(user.id))
-    except:
-        pass
-
-    update.message.reply_text('the time is out.',reply_markup = ReplyKeyboardRemove())
-
-def error(update,context):
-    print(update,context.error)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# info of bot and chanal
-bot = telegram.Bot(token=token)
-
-def main():
-    updater = Updater(token, use_context=True)
-    dp = updater.dispatcher
-
-    # ---------------------------------------------->>>> User Bot Handler
-    conv_handler = ConversationHandler(
-        entry_points = [CommandHandler('start', start)],
-
-
-        states = states,
-
-        fallbacks = [CommandHandler('cancle', start), CommandHandler('start', start), MessageHandler(Filters.regex('^exit$'), stop_conversation),
-                    MessageHandler(Filters.regex('^🏠 home$'), start_co)],
-
-        conversation_timeout = 50000, 
-    )
-
-
-    dp.add_handler(conv_handler)
-
-    dp.add_error_handler(error)
-
-    print('trying to connect to telegram api ...')
-
-    updater.start_polling()
-    
-
-    # updater.start_webhook(listen='0.0.0.0',port=PORT,url_path=TOKEN)
-    # updater.bot.set_webhook('https://clashbazar.com/' + TOKEN )
-
-    print('connected to telegram api : 200 ')
-
-    updater.idle()
-
-
-
-def remake_folder(folder_name):
-
-    folder_name = f'Downloads/{folder_name}'        
-
-    if os.path.exists(folder_name):
-        for filename in os.listdir(folder_name):
-            file_path = os.path.join(folder_name, filename)
+    with open(file_name, 'rb') as video_file:
+        while uploaded_size < file_size:
+            chunk = video_file.read(chunk_size)
+            uploaded_size += len(chunk)
+            percent = (uploaded_size / file_size) * 100
+            progress_bar = create_progress_bar(percent)
+            status_message = f"⬆️ رفع الفيديو:\nاسم الملف: {os.path.basename(file_name)}\n{progress_bar} {percent:.2f}%\n📦 {uploaded_size / (1024 * 1024):.2f} MiB / {file_size / (1024 * 1024):.2f} MiB"
             try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-            except Exception as e:
-                print('Failed to delete %s. Reason: %s' % (file_path, e))
+                bot.send_message(message.chat.id, status_message)
+            except:
+                pass
+            time.sleep(1)  # محاكاة الرفع
 
+    # إرسال الفيديو
+    with open(file_name, "rb") as video:
+        bot.send_video(message.chat.id, video)
+
+# دالة لإنشاء progress bar
+def create_progress_bar(percent):
+    bar_length = 20
+    filled_length = int(bar_length * percent / 100)
+    bar = '█' * filled_length + '-' * (bar_length - filled_length)
+    return f"[{bar}]"
+
+# أمر /start
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "أهلاً! ابعتلي رابط يوتيوب وهنزله لك. 🎥")
+
+# معالجة الرسائل
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    url = message.text
+    if url.startswith("http"):
+        bot.send_message(message.chat.id, "✅ رابط مقبول! يتم تحميل الفيديو الآن...")
+        download_video(url, message)
     else:
-        os.mkdir(folder_name)
+        bot.send_message(message.chat.id, "❌ أرسل رابط يوتيوب صحيح!")
 
-
-
-if __name__ == '__main__':
-
-
-    same = [CommandHandler('cancle', cancle), MessageHandler(Filters.regex('^exit$'), stop_conversation), MessageHandler(Filters.regex('^🏠 home$'), start)]
-
-
-    states = {
-            START_CO : [CommandHandler('start', start),
-                        MessageHandler(Filters.regex('^Download entire channel$'), start_co),
-                        MessageHandler(Filters.regex('^Download with searching word$'), start_co),
-                        MessageHandler(Filters.regex('^Download one video$'), start_co),
-                        MessageHandler(Filters.regex('^See processes$'), how_many_thread_is_alive),
-                        ],
-            
-            GET_WORD : same + [CommandHandler('start', start), MessageHandler(Filters.text , get_word_for_search)],
-
-            GET_NUMBER : same + [CommandHandler('start', start), MessageHandler(Filters.text , get_number_of_videos)],
-
-            GET_CHANNEL_URL : same + [CommandHandler('start', start), MessageHandler(Filters.text , get_channel_url)],
-
-            GET_URL : same + [CommandHandler('start', start), MessageHandler(Filters.text , one_video_download)],
-
-            CONFIRMATION : [CommandHandler('start', start), MessageHandler(Filters.regex('^I confirm$'), confirmation)],
-
-            
-
-    }
-
-    main()
+# تشغيل البوت مع إعادة المحاولة عند حدوث خطأ
+while True:
+    try:
+        bot.polling(timeout=60, long_polling_timeout=60)
+    except requests.exceptions.ReadTimeout:
+        print("⚠️ حدثت مهلة اتصال، إعادة المحاولة...")
+        time.sleep(5)  # انتظار 5 ثوانٍ ثم إعادة التشغيل
+    except Exception as e:
+        print(f"❌ خطأ غير متوقع: {e}")
+        time.sleep(5)
